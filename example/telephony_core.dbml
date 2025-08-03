@@ -1,0 +1,623 @@
+Table account {
+  account_id text [pk, not null]
+  person_id text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  address USER-DEFINED
+  nickname text [default: `'Account'::text`]
+  pin text [default: `generate_pin(4)`]
+}
+
+Table bundle {
+  bundle_id text [pk, not null]
+  name text [not null]
+  description text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  offerings ARRAY [not null, default: `'{}'::offering[]`]
+}
+
+Table business {
+  business_id text [pk, not null]
+  account_id text [not null]
+  name text [not null]
+  url text
+  cta USER-DEFINED
+  cta_url text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  type USER-DEFINED
+  industry USER-DEFINED
+  ein text
+  legal_name text
+  tax_exempt boolean [not null, default: `false`]
+
+  unique account_id
+}
+
+Table call {
+  call_id text [pk, not null]
+  line_id text [not null]
+  external_id text [not null]
+  provider USER-DEFINED [not null]
+  carrier USER-DEFINED [not null]
+  tn_from text [not null]
+  tn_to text [not null]
+  direction USER-DEFINED [not null]
+  status USER-DEFINED [not null]
+  duration int [not null]
+  started_at timestamptz [not null]
+  ended_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  result USER-DEFINED [not null]
+
+  index (line_id, started_at)
+  unique external_id
+}
+
+Table cancellation {
+  cancellation_id text [pk, not null]
+  service_id text [not null]
+  notes text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  scheduled_at timestamptz [not null]
+  reason USER-DEFINED [not null]
+  status USER-DEFINED [not null, default: `'pending'::ltree`]
+  created_by text
+  done_allocated_at timestamptz
+  done_deallocated_at timestamptz
+  reverted_at timestamptz
+  undone_at timestamptz
+
+  unique service_id
+  index reason
+  index status
+  index service_id
+}
+
+Table catalog {
+  product_id text [pk, not null]
+  pricing USER-DEFINED [pk, not null]
+  price int
+}
+
+Table chat_item {
+  chat_item_id text [pk, not null]
+  line_id text [not null]
+  tn text [not null]
+  call_id text
+  sms_id text
+  timestamp timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  voicemail_id text
+
+  index call_id
+  index (line_id, tn, timestamp)
+  index sms_id
+  index voicemail_id
+}
+
+Table contact {
+  contact_id text [pk, not null]
+  account_id text [not null]
+  prefix text
+  first_name text
+  middle_name text
+  last_name text
+  suffix text
+  company text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  emails ARRAY [default: `'{}'::email[]`]
+  email_labels ARRAY [default: `'{}'::text[]`]
+  phones ARRAY [default: `'{}'::text[]`]
+  phone_labels ARRAY [default: `'{}'::text[]`]
+
+  index account_id
+  index phones
+}
+
+Table customer {
+  customer_id text [pk, not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  account_id text [not null]
+  can_auto_pay boolean [not null, default: `false`]
+  payment_status_checked_at timestamptz
+
+  unique account_id
+}
+
+Table device {
+  device_id text [pk, not null]
+  iccid text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  account_id text [not null]
+}
+
+Table did {
+  tn text [pk, not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  provider USER-DEFINED [not null, default: `'tw'::did_provider`]
+  external_id text
+
+  unique tn
+}
+
+Table discount {
+  discount_id text [pk, not null]
+  account_id text [not null]
+  status USER-DEFINED [not null, default: `'active'::discount_status`]
+  percentage decimal [not null]
+  cycles int [not null]
+  cycles_used int [not null, default: `0`]
+  pricing USER-DEFINED [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by text [not null]
+
+  unique account_id
+}
+
+Table fulfillment {
+  fulfillment_id text [pk, not null]
+  purchase_id text
+  status USER-DEFINED [not null, default: `'pending'::fulfillment_status`]
+  resource_id text
+  metadata jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  purchase_item_id text
+  service_id text
+  product_id text [not null]
+
+  index product_id
+  index purchase_id
+  index service_id
+  index status
+}
+
+Table goose_db_version {
+  id int [pk, not null]
+  version_id bigint [not null]
+  is_applied boolean [not null]
+  tstamp timestamp [not null, default: `now()`]
+}
+
+Table invite {
+  invite_id text [pk, not null]
+  account_id text [not null]
+  first_name text [not null]
+  last_name text [not null]
+  email text [not null]
+  phone text
+  line_ids ARRAY [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  role USER-DEFINED [not null, default: `'member'::member_role`]
+
+  unique (account_id, email)
+  index account_id
+}
+
+Table invoice {
+  invoice_id text [pk, not null]
+  subscription_id text
+  description text
+  status USER-DEFINED [not null, default: `'draft'::invoice_status`]
+  total bigint [not null]
+  currency text [not null, default: `'usd'::text`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  finalized_at timestamptz
+  paid_at timestamptz
+  account_id text [not null]
+  number text
+  subtotal bigint [not null, default: `0`]
+  taxes bigint [not null, default: `0`]
+  reason USER-DEFINED [not null]
+  starts_at timestamptz [not null]
+  ends_at timestamptz [not null]
+  stripe_id text
+  avalara_committed_at timestamptz
+  voided_at timestamptz
+  payments jsonb [default: `'[]'::jsonb`]
+  opens_at timestamptz [not null]
+
+  index payments
+  index subscription_id
+  index (subscription_id, starts_at, ends_at)
+  unique stripe_id
+}
+
+Table invoice_item {
+  invoice_item_id text [pk, not null]
+  invoice_id text [not null]
+  product_id text [not null]
+  amount bigint [not null]
+  discount_amount bigint [not null, default: `0`]
+  quantity int [not null, default: `1`]
+  stripe_id text
+  service_id text
+  taxes ARRAY [default: `'{}'::tax_type[]`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  stripe_line_item_id text
+  starts_at timestamptz [not null]
+  ends_at timestamptz [not null]
+  description text [default: `''::text`]
+  billable_amount bigint [not null, default: `0`]
+  tax_amount bigint [not null, default: `0`]
+  total bigint [not null, default: `0`]
+
+  index invoice_id
+  index product_id
+  index service_id
+  index stripe_line_item_id
+  unique (invoice_id, service_id)
+}
+
+Table line {
+  line_id text [pk, not null]
+  account_id text [not null]
+  tn text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  features jsonb [not null, default: `'{}'::jsonb`]
+
+  index account_id
+  unique tn
+}
+
+Table line_access {
+  account_id text [pk, not null]
+  person_id text [pk, not null]
+  line_id text [pk, not null]
+  available boolean [default: `true`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table member {
+  account_id text [pk, not null]
+  person_id text [pk, not null]
+  role USER-DEFINED [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  index person_id
+}
+
+Table number {
+  tn text [pk, not null]
+  line_id text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  nickname text
+  service_id text [not null]
+
+  index line_id
+  index service_id
+  index tn
+  unique service_id
+}
+
+Table operator {
+  email text [pk, not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table person {
+  person_id text [pk, not null]
+  first_name text [not null]
+  last_name text [not null]
+  email text
+  phone text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  email_verified_at timestamptz
+  impersonated_at timestamptz
+
+  unique email
+  unique phone
+}
+
+Table portin {
+  portin_id text [pk, not null]
+  line_id text [not null]
+  tn text [not null]
+  account_number text
+  pin text
+  address USER-DEFINED
+  status USER-DEFINED [not null, default: `'draft'::portin_status`]
+  error text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  target_provider USER-DEFINED
+  external_id text
+
+  unique tn
+}
+
+Table product {
+  product_id text [pk, not null]
+  components ARRAY [not null, default: `'{}'::text[]`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  service_type int [not null, default: `0`]
+  transaction_type int [not null, default: `0`]
+  pricings ARRAY [not null, default: `ARRAY['once'::pricing_type]`]
+  name text [not null, default: `''::text`]
+  sku text
+}
+
+Table prompt {
+  prompt_id text [pk, not null]
+  line_id text [not null]
+  kind USER-DEFINED [not null]
+  title text [not null]
+  content text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  index line_id
+}
+
+Table purchase {
+  purchase_id text [pk, not null]
+  account_id text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  notes text
+  account_address USER-DEFINED [not null]
+  shipping_address USER-DEFINED [not null]
+  billing_address USER-DEFINED [not null]
+  person_id text [not null]
+  invoice_id text
+  status USER-DEFINED [default: `'pending'::purchase_status`]
+  created_by text
+  business_name text
+  subtotal bigint [not null, default: `0`]
+  taxes bigint [not null, default: `0`]
+  total bigint [not null, default: `0`]
+  source USER-DEFINED [not null, default: `'console'::purchase_source`]
+
+  index person_id
+}
+
+Table purchase_item {
+  purchase_item_id text [pk, not null]
+  purchase_id text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  config jsonb
+  taxes jsonb
+  offerings ARRAY [not null, default: `'{}'::offering[]`]
+  bundle_name text
+  service_id text
+
+  index service_id
+  index config
+}
+
+Table quote {
+  quote_id text [pk, not null]
+  purchase_id text [not null]
+  opened_at timestamptz
+  expires_at timestamptz [not null]
+  accepted_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  unique purchase_id
+}
+
+Table routing {
+  line_id text [pk, not null]
+  ringer_id text [pk, not null]
+  priority smallint [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  position int [not null, default: `0`]
+}
+
+Table service {
+  service_id text [pk, not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  offering USER-DEFINED [not null]
+  parent_id text
+  status USER-DEFINED [not null, default: `'inactive'::service_status`]
+  account_id text [not null]
+  activated_at timestamptz
+
+  index account_id
+  index parent_id
+}
+
+Table session {
+  person_id text [pk, not null]
+  session_id text [pk, not null]
+  fcm_token text
+  user_agent text [not null]
+  version text [not null]
+  last_seen_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table shipment {
+  shipment_id int [pk, not null]
+  order_id int [not null]
+  purchase_id text [not null]
+  status USER-DEFINED [not null]
+  tracking_carrier text
+  tracking_number text
+  tracking_url text
+  delivery_date timestamp
+  created_at timestamp
+  updated_at timestamp
+  serial_numbers ARRAY
+  courier_status USER-DEFINED
+
+  index purchase_id
+}
+
+Table sim {
+  iccid text [pk, not null]
+  provider USER-DEFINED [not null]
+  tn text
+  status USER-DEFINED [not null, default: `'inactive'::sim_status`]
+  created_at timestamptz
+  updated_at timestamptz
+  synced_at timestamptz
+  plan_code text
+  carrier USER-DEFINED
+  account_number text
+  pin text [not null, default: `generate_pin(6)`]
+  disconnected_at timestamptz
+  suspended_at timestamptz
+  unsuspended_at timestamptz
+  deregistered_at timestamptz
+  voicemail_password_reset_at timestamptz
+  reconnected_at timestamptz
+  swapped_at timestamptz
+
+  unique tn
+  unique tn
+}
+
+Table sim_event {
+  sim_event_id text [pk, not null]
+  iccid text [not null]
+  created_at timestamp [not null]
+  data jsonb [not null, default: `'{}'::jsonb`]
+  created_by text [not null, default: `'system'::text`]
+  kind text
+
+  index iccid
+  index (iccid, created_at)
+}
+
+Table sms {
+  sms_id text [pk, not null]
+  external_id text [not null]
+  direction USER-DEFINED [not null]
+  status USER-DEFINED [not null]
+  tn_from text [not null]
+  tn_to text [not null]
+  idempotency_key text [not null]
+  body text
+  created_at timestamptz
+  updated_at timestamptz
+  error_code text
+  line_id text [not null]
+  type USER-DEFINED [not null]
+
+  index direction
+  index status
+  index tn_from
+  index tn_to
+  unique external_id
+  unique (line_id, idempotency_key)
+}
+
+Table subscription {
+  subscription_id text [pk, not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  account_id text [not null]
+  pricing USER-DEFINED [not null]
+  billing_day int [not null]
+  billing_month int
+  billing_cycle_updated_at timestamptz [not null, default: `date_trunc('day'::text, CURRENT_TIMESTAMP)`]
+
+  unique (account_id, pricing)
+}
+
+Table voicemail {
+  voicemail_id text [pk, not null]
+  call_id text [not null]
+  recording_url text
+  recording_duration bigint
+  transcription_text text
+  transcription_url text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  line_id text [not null]
+  external_id text [not null]
+  tn_from text [not null]
+  tn_to text [not null]
+
+  unique call_id
+  unique external_id
+}
+
+Ref: account.person_id > person.person_id
+Ref: business.account_id > account.account_id [delete: cascade]
+Ref: call.line_id > line.line_id [delete: cascade]
+Ref: cancellation.created_by > operator.email
+Ref: cancellation.service_id > service.service_id [delete: cascade]
+Ref: chat_item.call_id > call.call_id [delete: cascade]
+Ref: chat_item.line_id > line.line_id [delete: cascade]
+Ref: chat_item.sms_id > sms.sms_id [delete: cascade]
+Ref: chat_item.voicemail_id > voicemail.voicemail_id [delete: cascade]
+Ref: chat_item.voicemail_id > voicemail.line_id [delete: cascade]
+Ref: contact.account_id > account.account_id [delete: cascade]
+Ref: customer.account_id > account.account_id [delete: cascade]
+Ref: device.account_id > account.account_id [delete: cascade]
+Ref: device.iccid > sim.account_id
+Ref: device.iccid > sim.iccid
+Ref: device.iccid > sim.iccid
+Ref: discount.account_id > account.account_id [delete: cascade]
+Ref: discount.created_by > operator.email
+Ref: fulfillment.product_id > product.product_id
+Ref: fulfillment.purchase_item_id > purchase_item.purchase_item_id [delete: cascade]
+Ref: fulfillment.service_id > service.service_id [delete: set null]
+Ref: invite.account_id > account.account_id [delete: cascade]
+Ref: invoice.account_id > account.account_id [delete: set null]
+Ref: invoice.account_id > account.account_id [delete: cascade]
+Ref: invoice.subscription_id > subscription.subscription_id
+Ref: invoice_item.product_id > product.product_id
+Ref: invoice_item.service_id > service.service_id [delete: set null]
+Ref: invoice_item.invoice_id > invoice.invoice_id [delete: cascade]
+Ref: invoice_item.invoice_id > invoice.invoice_id [delete: cascade]
+Ref: line.tn > number.tn
+Ref: line.account_id > account.account_id [delete: cascade]
+Ref: line_access.line_id > line.line_id [delete: cascade]
+Ref: line_access.person_id > person.person_id [delete: cascade]
+Ref: line_access.account_id > member.person_id [delete: cascade]
+Ref: line_access.account_id > member.account_id [delete: cascade]
+Ref: line_access.account_id > account.account_id [delete: cascade]
+Ref: line_access.person_id > member.person_id [delete: cascade]
+Ref: line_access.person_id > member.account_id [delete: cascade]
+Ref: member.account_id > account.account_id [delete: cascade]
+Ref: member.person_id > person.person_id
+Ref: number.line_id > line.line_id [delete: cascade]
+Ref: number.service_id > service.service_id
+Ref: portin.line_id > line.line_id [delete: cascade]
+Ref: prompt.line_id > line.line_id [delete: cascade]
+Ref: purchase.account_id > account.account_id [delete: cascade]
+Ref: purchase.created_by > operator.email
+Ref: purchase.person_id > person.person_id [delete: cascade]
+Ref: purchase_item.service_id > service.service_id
+Ref: purchase_item.purchase_id > purchase.purchase_id [delete: cascade]
+Ref: quote.purchase_id > purchase.purchase_id
+Ref: routing.line_id > line.line_id [delete: cascade]
+Ref: service.account_id > account.account_id [delete: cascade]
+Ref: session.person_id > person.person_id [delete: cascade]
+Ref: shipment.purchase_id > purchase.purchase_id [delete: cascade]
+Ref: sim_event.iccid > sim.account_id [delete: cascade, update: cascade]
+Ref: sim_event.iccid > sim.iccid [delete: cascade, update: cascade]
+Ref: sim_event.iccid > sim.iccid [delete: cascade, update: cascade]
+Ref: sms.line_id > line.line_id [delete: cascade]
+Ref: subscription.account_id > account.account_id [delete: cascade]
+Ref: voicemail.call_id > call.call_id [delete: cascade]
+Ref: voicemail.line_id > line.line_id [delete: cascade]
+Ref: voicemail.line_id > line.line_id [delete: cascade]
