@@ -29,9 +29,7 @@ func generateTable(builder *strings.Builder, table Table) {
 
 	if len(table.Indexes) > 0 {
 		builder.WriteString("\n")
-		for _, index := range table.Indexes {
-			generateIndex(builder, index)
-		}
+		generateIndexes(builder, table.Indexes)
 	}
 
 	builder.WriteString("}\n")
@@ -46,7 +44,7 @@ func generateColumn(builder *strings.Builder, column Column) {
 		attributes = append(attributes, "pk")
 	}
 
-	if !column.Nullable {
+	if !column.Nullable && !column.IsPrimaryKey {
 		attributes = append(attributes, "not null")
 	}
 
@@ -66,17 +64,24 @@ func generateColumn(builder *strings.Builder, column Column) {
 	builder.WriteString("\n")
 }
 
-func generateIndex(builder *strings.Builder, index Index) {
-	indexType := "index"
-	if index.Unique {
-		indexType = "unique"
+func generateIndexes(builder *strings.Builder, indexes []Index) {
+	builder.WriteString("  indexes {\n")
+	for _, index := range indexes {
+		if index.Unique {
+			if len(index.Columns) == 1 {
+				builder.WriteString(fmt.Sprintf("    (%s) [unique]\n", index.Columns[0]))
+			} else {
+				builder.WriteString(fmt.Sprintf("    (%s) [unique]\n", strings.Join(index.Columns, ", ")))
+			}
+		} else {
+			if len(index.Columns) == 1 {
+				builder.WriteString(fmt.Sprintf("    %s\n", index.Columns[0]))
+			} else {
+				builder.WriteString(fmt.Sprintf("    (%s)\n", strings.Join(index.Columns, ", ")))
+			}
+		}
 	}
-
-	if len(index.Columns) == 1 {
-		builder.WriteString(fmt.Sprintf("  %s %s\n", indexType, index.Columns[0]))
-	} else {
-		builder.WriteString(fmt.Sprintf("  %s (%s)\n", indexType, strings.Join(index.Columns, ", ")))
-	}
+	builder.WriteString("  }\n")
 }
 
 func generateReferences(builder *strings.Builder, table Table) {

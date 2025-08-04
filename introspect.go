@@ -126,16 +126,17 @@ func getTables(db *sql.DB, schemaName string) ([]Table, error) {
 func getColumns(db *sql.DB, schemaName, tableName string) ([]Column, error) {
 	query := `
 		SELECT 
-			column_name,
-			data_type,
-			character_maximum_length,
-			numeric_precision,
-			numeric_scale,
-			is_nullable,
-			column_default
-		FROM information_schema.columns 
-		WHERE table_schema = $1 AND table_name = $2
-		ORDER BY ordinal_position
+			c.column_name,
+			c.data_type,
+			c.character_maximum_length,
+			c.numeric_precision,
+			c.numeric_scale,
+			c.is_nullable,
+			c.column_default,
+			COALESCE(c.udt_name, c.data_type) as udt_name
+		FROM information_schema.columns c
+		WHERE c.table_schema = $1 AND c.table_name = $2
+		ORDER BY c.ordinal_position
 	`
 
 	rows, err := db.Query(query, schemaName, tableName)
@@ -151,6 +152,7 @@ func getColumns(db *sql.DB, schemaName, tableName string) ([]Column, error) {
 		var charMaxLength, numericPrecision, numericScale sql.NullInt64
 		var isNullable string
 		var columnDefault sql.NullString
+		var udtName string
 
 		err := rows.Scan(
 			&col.Name,
@@ -160,12 +162,13 @@ func getColumns(db *sql.DB, schemaName, tableName string) ([]Column, error) {
 			&numericScale,
 			&isNullable,
 			&columnDefault,
+			&udtName,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		col.Type = mapPostgreSQLTypeToDBML(dataType, charMaxLength, numericPrecision, numericScale)
+		col.Type = mapPostgreSQLTypeToDBML(dataType, udtName, charMaxLength, numericPrecision, numericScale)
 		col.Nullable = isNullable == "YES"
 		if columnDefault.Valid {
 			col.DefaultValue = &columnDefault.String
@@ -255,19 +258,23 @@ func getIndexes(db *sql.DB, schemaName, tableName string) ([]Index, error) {
 
 func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, error) {
 	query := `
-		SELECT 
-			kcu.column_name,
-			ccu.table_name AS foreign_table_name,
-			ccu.column_name AS foreign_column_name,
+		SELECT DISTINCT
+			kcu1.column_name,
+			kcu2.table_name AS foreign_table_name,
+			kcu2.column_name AS foreign_column_name,
 			rc.delete_rule,
-			rc.update_rule
-		FROM information_schema.key_column_usage kcu
-		JOIN information_schema.referential_constraints rc
-			ON kcu.constraint_name = rc.constraint_name
-		JOIN information_schema.constraint_column_usage ccu
-			ON rc.unique_constraint_name = ccu.constraint_name
-		WHERE kcu.table_schema = $1 AND kcu.table_name = $2
-		ORDER BY kcu.ordinal_position
+			rc.update_rule,
+			kcu1.ordinal_position
+		FROM information_schema.referential_constraints rc
+		JOIN information_schema.key_column_usage kcu1
+			ON kcu1.constraint_name = rc.constraint_name
+			AND kcu1.table_schema = rc.constraint_schema
+		JOIN information_schema.key_column_usage kcu2
+			ON kcu2.constraint_name = rc.unique_constraint_name
+			AND kcu2.table_schema = rc.unique_constraint_schema
+			AND kcu2.ordinal_position = kcu1.ordinal_position
+		WHERE kcu1.table_schema = $1 AND kcu1.table_name = $2
+		ORDER BY kcu1.ordinal_position
 	`
 
 	rows, err := db.Query(query, schemaName, tableName)
@@ -280,6 +287,7 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 	for rows.Next() {
 		var ref Reference
 		var fromColumn, toColumn string
+		var ordinalPosition int
 
 		err := rows.Scan(
 			&fromColumn,
@@ -287,6 +295,7 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 			&toColumn,
 			&ref.OnDelete,
 			&ref.OnUpdate,
+			&ordinalPosition,
 		)
 		if err != nil {
 			return nil, err
@@ -302,7 +311,7 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 	return references, rows.Err()
 }
 
-func mapPostgreSQLTypeToDBML(dataType string, charMaxLength, numericPrecision, numericScale sql.NullInt64) string {
+func mapPostgreSQLTypeToDBML(dataType, udtName string, charMaxLength, numericPrecision, numericScale sql.NullInt64) string {
 	switch strings.ToLower(dataType) {
 	case "integer", "int4":
 		return "int"
@@ -351,7 +360,37 @@ func mapPostgreSQLTypeToDBML(dataType string, charMaxLength, numericPrecision, n
 		return "jsonb"
 	case "bytea":
 		return "binary"
+	case "user-defined":
+		// For USER-DEFINED types, use the actual type name but make it DBML-compatible
+		return normalizeCustomType(udtName)
+	case "array":
+		// For arrays, use the base type with array notation
+		return normalizeCustomType(udtName)
 	default:
 		return dataType
+	}
+}
+
+func normalizeCustomType(typeName string) string {
+	// Remove common PostgreSQL array suffixes and make type names DBML-compatible
+	if strings.HasPrefix(typeName, "_") {
+		// Array types in PostgreSQL start with underscore
+		baseType := strings.TrimPrefix(typeName, "_")
+		return normalizeTypeName(baseType)
+	}
+	
+	return normalizeTypeName(typeName)
+}
+
+func normalizeTypeName(typeName string) string {
+	// Convert custom types to valid DBML identifiers
+	// For unknown types, default to 'text' to ensure DBML compatibility
+	switch strings.ToLower(typeName) {
+	case "address", "contact_method", "offering", "provider", "carrier", "direction", "status", "business_type", "industry", "cta":
+		// Common custom types can be mapped to text for DBML compatibility
+		return "text"
+	default:
+		// For truly unknown types, use text as fallback
+		return "text"
 	}
 }
