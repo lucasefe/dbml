@@ -12,13 +12,59 @@ A Go package that generates DBML (Database Markup Language) files from PostgreSQ
 
 ## Installation
 
+### Go Package
 ```bash
 go get github.com/lucasefe/dbml
 ```
 
+### CLI Binary
+```bash
+# Install globally
+go install github.com/lucasefe/dbml/cmd/dbml@latest
+
+# Or build locally
+git clone https://github.com/lucasefe/dbml.git
+cd dbml
+go build -o dbml ./cmd/dbml
+```
+
 ## Usage
 
-### Basic Usage
+### CLI Usage
+
+```bash
+# Generate DBML for public schema to stdout
+dbml --url "postgres://user:pass@localhost/db"
+
+# Generate DBML for all schemas to file
+dbml --url "postgres://user:pass@localhost/db" --all-schemas --output schema.dbml
+
+# Use environment variable for database URL
+export DATABASE_URL="postgres://user:pass@localhost/db"
+dbml --schemas "public,auth" --exclude-tables "migrations,_temp"
+
+# Generate DBML to stdout (useful for piping)
+dbml | head -20
+```
+
+#### CLI Options
+- `--url, -u`: PostgreSQL connection URL
+- `--output, -o`: Output file path (default: stdout)
+- `--schemas, -s`: Comma-separated schemas to include (default: public)
+- `--exclude-tables, -x`: Comma-separated tables to exclude
+- `--all-schemas, -a`: Include all non-system schemas
+- `--version, -v`: Show version
+- `--help, -h`: Show help
+
+#### Environment Variables
+- `DATABASE_URL`: PostgreSQL connection URL
+- `DBML_SCHEMAS`: Comma-separated schemas to include
+- `DBML_EXCLUDE_TABLES`: Comma-separated tables to exclude
+- `DBML_ALL_SCHEMAS`: Set to 'true' to include all schemas
+
+### Go Package Usage
+
+#### Basic Usage
 
 ```go
 package main
@@ -49,7 +95,7 @@ func main() {
 
 ```go
 config := &dbml.Config{
-    Schema:        "public",
+    Schemas:       []string{"public", "auth"},
     ExcludeTables: []string{"migrations", "schema_migrations"},
 }
 
@@ -102,8 +148,9 @@ go run main.go "postgres://user:password@localhost/dbname?sslmode=disable" outpu
 
 ```go
 type Config struct {
-    Schema        string   // Database schema name (default: "public")
-    ExcludeTables []string // Tables to exclude from generation
+    Schemas           []string // Specific schemas to include (empty means all non-system schemas)
+    ExcludeTables     []string // Tables to exclude from generation
+    IncludeAllSchemas bool     // If true, includes all non-system schemas
 }
 ```
 
