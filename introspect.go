@@ -35,63 +35,102 @@ type Index struct {
 
 type Reference struct {
 	FromTable   string
+	FromSchema  string
 	FromColumns []string
 	ToTable     string
+	ToSchema    string
 	ToColumns   []string
 	OnDelete    string
 	OnUpdate    string
 }
 
-func IntrospectDatabase(db *sql.DB, schemaName string) (*Schema, error) {
-	if schemaName == "" {
-		schemaName = "public"
+func IntrospectDatabase(db *sql.DB, schemaNames []string) (*Schema, error) {
+	if len(schemaNames) == 0 {
+		schemaNames = []string{"public"}
 	}
 
 	schema := &Schema{}
 
-	tables, err := getTables(db, schemaName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tables: %w", err)
-	}
-
-	for _, table := range tables {
-		columns, err := getColumns(db, schemaName, table.Name)
+	for _, schemaName := range schemaNames {
+		tables, err := getTables(db, schemaName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get columns for table %s: %w", table.Name, err)
+			return nil, fmt.Errorf("failed to get tables for schema %s: %w", schemaName, err)
 		}
-		table.Columns = columns
 
-		primaryKeys, err := getPrimaryKeys(db, schemaName, table.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get primary keys for table %s: %w", table.Name, err)
-		}
-		table.PrimaryKeys = primaryKeys
+		for _, table := range tables {
+			columns, err := getColumns(db, schemaName, table.Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get columns for table %s.%s: %w", schemaName, table.Name, err)
+			}
+			table.Columns = columns
 
-		for i := range table.Columns {
-			for _, pk := range primaryKeys {
-				if table.Columns[i].Name == pk {
-					table.Columns[i].IsPrimaryKey = true
-					break
+			primaryKeys, err := getPrimaryKeys(db, schemaName, table.Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get primary keys for table %s.%s: %w", schemaName, table.Name, err)
+			}
+			table.PrimaryKeys = primaryKeys
+
+			for i := range table.Columns {
+				for _, pk := range primaryKeys {
+					if table.Columns[i].Name == pk {
+						table.Columns[i].IsPrimaryKey = true
+						break
+					}
 				}
 			}
-		}
 
-		indexes, err := getIndexes(db, schemaName, table.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get indexes for table %s: %w", table.Name, err)
-		}
-		table.Indexes = indexes
+			indexes, err := getIndexes(db, schemaName, table.Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get indexes for table %s.%s: %w", schemaName, table.Name, err)
+			}
+			table.Indexes = indexes
 
-		references, err := getForeignKeys(db, schemaName, table.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get foreign keys for table %s: %w", table.Name, err)
-		}
-		table.References = references
+			references, err := getForeignKeys(db, schemaName, table.Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get foreign keys for table %s.%s: %w", schemaName, table.Name, err)
+			}
+			table.References = references
 
-		schema.Tables = append(schema.Tables, table)
+			schema.Tables = append(schema.Tables, table)
+		}
 	}
 
 	return schema, nil
+}
+
+func IntrospectAllSchemas(db *sql.DB) (*Schema, error) {
+	schemas, err := getAllSchemas(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schemas: %w", err)
+	}
+	
+	return IntrospectDatabase(db, schemas)
+}
+
+func getAllSchemas(db *sql.DB) ([]string, error) {
+	query := `
+		SELECT schema_name 
+		FROM information_schema.schemata 
+		WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast', 'pg_temp_1', 'pg_toast_temp_1')
+		ORDER BY schema_name
+	`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var schemaName string
+		if err := rows.Scan(&schemaName); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, schemaName)
+	}
+
+	return schemas, rows.Err()
 }
 
 func getTables(db *sql.DB, schemaName string) ([]Table, error) {
@@ -260,6 +299,7 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 	query := `
 		SELECT DISTINCT
 			kcu1.column_name,
+			kcu2.table_schema AS foreign_table_schema,
 			kcu2.table_name AS foreign_table_name,
 			kcu2.column_name AS foreign_column_name,
 			rc.delete_rule,
@@ -283,7 +323,7 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 	}
 	defer rows.Close()
 
-	var references []Reference
+	referenceMap := make(map[string]Reference)
 	for rows.Next() {
 		var ref Reference
 		var fromColumn, toColumn string
@@ -291,6 +331,7 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 
 		err := rows.Scan(
 			&fromColumn,
+			&ref.ToSchema,
 			&ref.ToTable,
 			&toColumn,
 			&ref.OnDelete,
@@ -302,9 +343,33 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 		}
 
 		ref.FromTable = tableName
+		ref.FromSchema = schemaName
 		ref.FromColumns = []string{fromColumn}
 		ref.ToColumns = []string{toColumn}
 
+		// Create a unique key for deduplication
+		key := fmt.Sprintf("%s.%s.%s->%s.%s.%s", 
+			schemaName, tableName, fromColumn,
+			ref.ToSchema, ref.ToTable, toColumn)
+		
+		// Only keep the first occurrence (or merge if needed)
+		if existing, exists := referenceMap[key]; exists {
+			// If delete/update rules differ, prefer the more restrictive one
+			if ref.OnDelete != "NO ACTION" && ref.OnDelete != "" && existing.OnDelete == "NO ACTION" {
+				existing.OnDelete = ref.OnDelete
+			}
+			if ref.OnUpdate != "NO ACTION" && ref.OnUpdate != "" && existing.OnUpdate == "NO ACTION" {
+				existing.OnUpdate = ref.OnUpdate
+			}
+			referenceMap[key] = existing
+		} else {
+			referenceMap[key] = ref
+		}
+	}
+
+	// Convert map back to slice
+	var references []Reference
+	for _, ref := range referenceMap {
 		references = append(references, ref)
 	}
 

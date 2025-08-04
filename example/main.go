@@ -37,7 +37,7 @@ func main() {
 	fmt.Printf("Introspecting database schema...\n")
 
 	config := &dbml.Config{
-		Schema: "public",
+		IncludeAllSchemas: true, // Include all schemas
 	}
 
 	dbmlContent, err := dbml.GenerateFromConnection(db, config)
@@ -67,7 +67,7 @@ func exampleUsageWithConfig() {
 	connStr := "postgres://user:password@localhost/dbname?sslmode=disable"
 
 	config := &dbml.Config{
-		Schema:        "public",
+		Schemas:       []string{"public", "auth"}, // Specific schemas
 		ExcludeTables: []string{"migrations", "schema_migrations"},
 	}
 
@@ -84,7 +84,7 @@ func exampleDirectToFile() {
 	filename := "database_schema.dbml"
 
 	config := &dbml.Config{
-		Schema: "public",
+		IncludeAllSchemas: true, // Include all schemas
 	}
 
 	err := dbml.WriteToFileFromConnectionString(connStr, filename, config)

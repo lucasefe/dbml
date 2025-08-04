@@ -21,7 +21,11 @@ func GenerateDBML(schema *Schema) string {
 }
 
 func generateTable(builder *strings.Builder, table Table) {
-	builder.WriteString(fmt.Sprintf("Table %s {\n", table.Name))
+	tableName := table.Name
+	if table.Schema != "" && table.Schema != "public" {
+		tableName = fmt.Sprintf("%s.%s", table.Schema, table.Name)
+	}
+	builder.WriteString(fmt.Sprintf("Table %s {\n", tableName))
 
 	for _, column := range table.Columns {
 		generateColumn(builder, column)
@@ -91,18 +95,21 @@ func generateReferences(builder *strings.Builder, table Table) {
 }
 
 func generateReference(builder *strings.Builder, ref Reference) {
-	fromRef := ref.FromTable
+	fromTable := getQualifiedTableName(ref.FromTable, ref.FromSchema)
+	toTable := getQualifiedTableName(ref.ToTable, ref.ToSchema)
+	
+	fromRef := fromTable
 	if len(ref.FromColumns) == 1 {
-		fromRef = fmt.Sprintf("%s.%s", ref.FromTable, ref.FromColumns[0])
+		fromRef = fmt.Sprintf("%s.%s", fromTable, ref.FromColumns[0])
 	} else {
-		fromRef = fmt.Sprintf("%s.(%s)", ref.FromTable, strings.Join(ref.FromColumns, ", "))
+		fromRef = fmt.Sprintf("%s.(%s)", fromTable, strings.Join(ref.FromColumns, ", "))
 	}
 
-	toRef := ref.ToTable
+	toRef := toTable
 	if len(ref.ToColumns) == 1 {
-		toRef = fmt.Sprintf("%s.%s", ref.ToTable, ref.ToColumns[0])
+		toRef = fmt.Sprintf("%s.%s", toTable, ref.ToColumns[0])
 	} else {
-		toRef = fmt.Sprintf("%s.(%s)", ref.ToTable, strings.Join(ref.ToColumns, ", "))
+		toRef = fmt.Sprintf("%s.(%s)", toTable, strings.Join(ref.ToColumns, ", "))
 	}
 
 	builder.WriteString(fmt.Sprintf("Ref: %s > %s", fromRef, toRef))
@@ -120,4 +127,11 @@ func generateReference(builder *strings.Builder, ref Reference) {
 	}
 
 	builder.WriteString("\n")
+}
+
+func getQualifiedTableName(tableName, schemaName string) string {
+	if schemaName != "" && schemaName != "public" {
+		return fmt.Sprintf("%s.%s", schemaName, tableName)
+	}
+	return tableName
 }

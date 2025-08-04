@@ -9,19 +9,27 @@ import (
 )
 
 type Config struct {
-	Schema       string
+	Schemas       []string // Specific schemas to include (empty means all non-system schemas)
 	ExcludeTables []string
+	IncludeAllSchemas bool // If true, includes all non-system schemas
 }
 
 func GenerateFromConnection(db *sql.DB, config *Config) (string, error) {
 	if config == nil {
-		config = &Config{Schema: "public"}
-	}
-	if config.Schema == "" {
-		config.Schema = "public"
+		config = &Config{Schemas: []string{"public"}}
 	}
 
-	schema, err := IntrospectDatabase(db, config.Schema)
+	var schema *Schema
+	var err error
+
+	if config.IncludeAllSchemas {
+		schema, err = IntrospectAllSchemas(db)
+	} else if len(config.Schemas) == 0 {
+		schema, err = IntrospectDatabase(db, []string{"public"})
+	} else {
+		schema, err = IntrospectDatabase(db, config.Schemas)
+	}
+
 	if err != nil {
 		return "", fmt.Errorf("failed to introspect database: %w", err)
 	}
