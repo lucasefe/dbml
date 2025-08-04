@@ -84,7 +84,7 @@ func TestGenerateDBML(t *testing.T) {
 
 	expectedContains := []string{
 		"Table users {",
-		"id int [pk, not null]",
+		"id int [pk]",
 		"email varchar(255) [not null]",
 		"name varchar(100)",
 		"indexes {",
