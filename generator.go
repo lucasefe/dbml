@@ -2,19 +2,73 @@ package dbml
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
 func GenerateDBML(schema *Schema) string {
 	var builder strings.Builder
 
-	for _, table := range schema.Tables {
+	// Sort tables by schema.name for consistent output
+	sortedTables := make([]Table, len(schema.Tables))
+	copy(sortedTables, schema.Tables)
+	sort.Slice(sortedTables, func(i, j int) bool {
+		if sortedTables[i].Schema != sortedTables[j].Schema {
+			return sortedTables[i].Schema < sortedTables[j].Schema
+		}
+		return sortedTables[i].Name < sortedTables[j].Name
+	})
+
+	for _, table := range sortedTables {
 		generateTable(&builder, table)
 		builder.WriteString("\n")
 	}
 
-	for _, table := range schema.Tables {
-		generateReferences(&builder, table)
+	// Collect and sort all references
+	var allReferences []Reference
+	for _, table := range sortedTables {
+		for _, ref := range table.References {
+			allReferences = append(allReferences, ref)
+		}
+	}
+
+	// Sort references for consistent output
+	sort.Slice(allReferences, func(i, j int) bool {
+		refI := allReferences[i]
+		refJ := allReferences[j] 
+		
+		// Sort by from table schema.name first
+		fromTableI := getQualifiedTableName(refI.FromTable, refI.FromSchema)
+		fromTableJ := getQualifiedTableName(refJ.FromTable, refJ.FromSchema)
+		if fromTableI != fromTableJ {
+			return fromTableI < fromTableJ
+		}
+		
+		// Then by from column
+		if len(refI.FromColumns) > 0 && len(refJ.FromColumns) > 0 {
+			if refI.FromColumns[0] != refJ.FromColumns[0] {
+				return refI.FromColumns[0] < refJ.FromColumns[0]
+			}
+		}
+		
+		// Then by to table schema.name
+		toTableI := getQualifiedTableName(refI.ToTable, refI.ToSchema)
+		toTableJ := getQualifiedTableName(refJ.ToTable, refJ.ToSchema)
+		if toTableI != toTableJ {
+			return toTableI < toTableJ
+		}
+		
+		// Finally by to column
+		if len(refI.ToColumns) > 0 && len(refJ.ToColumns) > 0 {
+			return refI.ToColumns[0] < refJ.ToColumns[0]
+		}
+		
+		return false
+	})
+
+	// Generate sorted references
+	for _, ref := range allReferences {
+		generateReference(&builder, ref)
 	}
 
 	return builder.String()
@@ -27,13 +81,26 @@ func generateTable(builder *strings.Builder, table Table) {
 	}
 	builder.WriteString(fmt.Sprintf("Table %s {\n", tableName))
 
-	for _, column := range table.Columns {
+	// Sort columns by name for consistent output
+	sortedColumns := make([]Column, len(table.Columns))
+	copy(sortedColumns, table.Columns)
+	sort.Slice(sortedColumns, func(i, j int) bool {
+		return sortedColumns[i].Name < sortedColumns[j].Name
+	})
+
+	for _, column := range sortedColumns {
 		generateColumn(builder, column)
 	}
 
 	if len(table.Indexes) > 0 {
 		builder.WriteString("\n")
-		generateIndexes(builder, table.Indexes)
+		// Sort indexes by name for consistent output
+		sortedIndexes := make([]Index, len(table.Indexes))
+		copy(sortedIndexes, table.Indexes)
+		sort.Slice(sortedIndexes, func(i, j int) bool {
+			return sortedIndexes[i].Name < sortedIndexes[j].Name
+		})
+		generateIndexes(builder, sortedIndexes)
 	}
 
 	builder.WriteString("}\n")
@@ -88,11 +155,6 @@ func generateIndexes(builder *strings.Builder, indexes []Index) {
 	builder.WriteString("  }\n")
 }
 
-func generateReferences(builder *strings.Builder, table Table) {
-	for _, ref := range table.References {
-		generateReference(builder, ref)
-	}
-}
 
 func generateReference(builder *strings.Builder, ref Reference) {
 	fromTable := getQualifiedTableName(ref.FromTable, ref.FromSchema)

@@ -3,6 +3,7 @@ package dbml
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -367,10 +368,16 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 		}
 	}
 
-	// Convert map back to slice
+	// Convert map back to slice and sort by key for deterministic output
+	var keys []string
+	for key := range referenceMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	
 	var references []Reference
-	for _, ref := range referenceMap {
-		references = append(references, ref)
+	for _, key := range keys {
+		references = append(references, referenceMap[key])
 	}
 
 	return references, rows.Err()
