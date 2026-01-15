@@ -7,45 +7,132 @@ import (
 	"strings"
 )
 
+// Schema represents a database schema containing multiple tables.
+// It is the top-level container returned by introspection functions.
 type Schema struct {
+	// Tables contains all tables found in the introspected schema(s).
 	Tables []Table
 }
 
+// Table represents a database table with its columns, primary keys,
+// indexes, and foreign key references.
 type Table struct {
-	Name        string
-	Schema      string
-	Columns     []Column
+	// Name is the table name without schema qualification.
+	Name string
+	// Schema is the database schema containing this table (e.g., "public").
+	Schema string
+	// Columns contains all columns in the table, ordered by ordinal position.
+	Columns []Column
+	// PrimaryKeys lists column names that form the primary key.
 	PrimaryKeys []string
-	Indexes     []Index
-	References  []Reference
+	// Indexes contains non-primary-key indexes on the table.
+	Indexes []Index
+	// References contains foreign key relationships from this table to other tables.
+	References []Reference
 }
 
+// Column represents a database column within a table.
 type Column struct {
-	Name         string
-	Type         string
-	Nullable     bool
+	// Name is the column name.
+	Name string
+	// Type is the DBML-compatible type (e.g., "int", "varchar(255)", "timestamp").
+	Type string
+	// Nullable indicates whether the column allows NULL values.
+	Nullable bool
+	// DefaultValue is the column's default value expression, or nil if none.
 	DefaultValue *string
+	// IsPrimaryKey indicates whether this column is part of the primary key.
 	IsPrimaryKey bool
 }
 
+// Index represents a database index on one or more columns.
 type Index struct {
-	Name    string
+	// Name is the index name.
+	Name string
+	// Columns lists the column names included in the index.
 	Columns []string
-	Unique  bool
+	// Unique indicates whether this is a unique index.
+	Unique bool
 }
 
+// Reference represents a foreign key relationship between tables.
 type Reference struct {
-	FromTable   string
-	FromSchema  string
+	// FromTable is the table containing the foreign key.
+	FromTable string
+	// FromSchema is the schema of the table containing the foreign key.
+	FromSchema string
+	// FromColumns lists the column names in the foreign key.
 	FromColumns []string
-	ToTable     string
-	ToSchema    string
-	ToColumns   []string
-	OnDelete    string
-	OnUpdate    string
+	// ToTable is the referenced table.
+	ToTable string
+	// ToSchema is the schema of the referenced table.
+	ToSchema string
+	// ToColumns lists the referenced column names.
+	ToColumns []string
+	// OnDelete is the referential action on delete (e.g., "CASCADE", "SET NULL").
+	OnDelete string
+	// OnUpdate is the referential action on update.
+	OnUpdate string
 }
 
+// TypeMapper defines the interface for converting database types to DBML types.
+// Implement this interface to customize type mapping behavior.
+type TypeMapper interface {
+	// MapType converts a database column type to a DBML type string.
+	// dataType is the base data type (e.g., "integer", "varchar")
+	// udtName is the user-defined type name for custom types
+	// charMaxLength, numericPrecision, numericScale provide type modifiers
+	MapType(dataType, udtName string, charMaxLength, numericPrecision, numericScale sql.NullInt64) string
+}
+
+// PostgreSQLTypeMapper provides PostgreSQL to DBML type conversion.
+// It supports custom type overrides via the CustomMappings field.
+type PostgreSQLTypeMapper struct {
+	// CustomMappings allows overriding default type mappings.
+	// Keys are PostgreSQL type names (case-insensitive), values are DBML types.
+	CustomMappings map[string]string
+}
+
+// NewPostgreSQLTypeMapper creates a new TypeMapper with optional custom mappings.
+// If customMappings is nil, only default mappings are used.
+//
+// Example:
+//
+//	mapper := dbml.NewPostgreSQLTypeMapper(map[string]string{
+//	    "citext": "varchar",
+//	    "ltree":  "text",
+//	})
+func NewPostgreSQLTypeMapper(customMappings map[string]string) *PostgreSQLTypeMapper {
+	return &PostgreSQLTypeMapper{CustomMappings: customMappings}
+}
+
+// MapType implements TypeMapper for PostgreSQL databases.
+// It checks CustomMappings first, then falls back to default mappings.
+func (m *PostgreSQLTypeMapper) MapType(dataType, udtName string, charMaxLength, numericPrecision, numericScale sql.NullInt64) string {
+	// Check custom mappings first (case-insensitive)
+	if m.CustomMappings != nil {
+		if mapped, ok := m.CustomMappings[strings.ToLower(dataType)]; ok {
+			return mapped
+		}
+		// Also check the UDT name for custom types
+		if mapped, ok := m.CustomMappings[strings.ToLower(udtName)]; ok {
+			return mapped
+		}
+	}
+	// Fall back to default implementation
+	return mapPostgreSQLTypeToDBML(dataType, udtName, charMaxLength, numericPrecision, numericScale)
+}
+
+// IntrospectDatabase queries a PostgreSQL database and returns its schema structure.
+// It extracts tables, columns, primary keys, indexes, and foreign key references
+// from the specified schema names. If schemaNames is empty, it defaults to ["public"].
 func IntrospectDatabase(db *sql.DB, schemaNames []string) (*Schema, error) {
+	return IntrospectDatabaseWithMapper(db, schemaNames, nil)
+}
+
+// IntrospectDatabaseWithMapper queries a PostgreSQL database and returns its schema structure
+// using a custom type mapper. If mapper is nil, the default PostgreSQL type mappings are used.
+func IntrospectDatabaseWithMapper(db *sql.DB, schemaNames []string, mapper TypeMapper) (*Schema, error) {
 	if len(schemaNames) == 0 {
 		schemaNames = []string{"public"}
 	}
@@ -59,7 +146,7 @@ func IntrospectDatabase(db *sql.DB, schemaNames []string) (*Schema, error) {
 		}
 
 		for _, table := range tables {
-			columns, err := getColumns(db, schemaName, table.Name)
+			columns, err := getColumnsWithMapper(db, schemaName, table.Name, mapper)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get columns for table %s.%s: %w", schemaName, table.Name, err)
 			}
@@ -99,13 +186,23 @@ func IntrospectDatabase(db *sql.DB, schemaNames []string) (*Schema, error) {
 	return schema, nil
 }
 
+// IntrospectAllSchemas queries a PostgreSQL database and returns schemas for all
+// non-system schemas. It excludes information_schema, pg_catalog, pg_toast, and
+// other PostgreSQL internal schemas.
 func IntrospectAllSchemas(db *sql.DB) (*Schema, error) {
+	return IntrospectAllSchemasWithMapper(db, nil)
+}
+
+// IntrospectAllSchemasWithMapper queries a PostgreSQL database and returns schemas
+// for all non-system schemas using a custom type mapper.
+// If mapper is nil, the default PostgreSQL type mappings are used.
+func IntrospectAllSchemasWithMapper(db *sql.DB, mapper TypeMapper) (*Schema, error) {
 	schemas, err := getAllSchemas(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schemas: %w", err)
 	}
-	
-	return IntrospectDatabase(db, schemas)
+
+	return IntrospectDatabaseWithMapper(db, schemas, mapper)
 }
 
 func getAllSchemas(db *sql.DB) ([]string, error) {
@@ -164,8 +261,12 @@ func getTables(db *sql.DB, schemaName string) ([]Table, error) {
 }
 
 func getColumns(db *sql.DB, schemaName, tableName string) ([]Column, error) {
+	return getColumnsWithMapper(db, schemaName, tableName, nil)
+}
+
+func getColumnsWithMapper(db *sql.DB, schemaName, tableName string, mapper TypeMapper) ([]Column, error) {
 	query := `
-		SELECT 
+		SELECT
 			c.column_name,
 			c.data_type,
 			c.character_maximum_length,
@@ -208,7 +309,12 @@ func getColumns(db *sql.DB, schemaName, tableName string) ([]Column, error) {
 			return nil, err
 		}
 
-		col.Type = mapPostgreSQLTypeToDBML(dataType, udtName, charMaxLength, numericPrecision, numericScale)
+		// Use custom mapper if provided, otherwise use default
+		if mapper != nil {
+			col.Type = mapper.MapType(dataType, udtName, charMaxLength, numericPrecision, numericScale)
+		} else {
+			col.Type = mapPostgreSQLTypeToDBML(dataType, udtName, charMaxLength, numericPrecision, numericScale)
+		}
 		col.Nullable = isNullable == "YES"
 		if columnDefault.Valid {
 			col.DefaultValue = &columnDefault.String
@@ -383,6 +489,51 @@ func getForeignKeys(db *sql.DB, schemaName, tableName string) ([]Reference, erro
 	return references, rows.Err()
 }
 
+// DefaultTypeMappings contains the standard PostgreSQL to DBML type mappings.
+// This can be used as a reference when creating custom type mappers.
+var DefaultTypeMappings = map[string]string{
+	"integer":                     "int",
+	"int4":                        "int",
+	"bigint":                      "bigint",
+	"int8":                        "bigint",
+	"smallint":                    "smallint",
+	"int2":                        "smallint",
+	"boolean":                     "boolean",
+	"bool":                        "boolean",
+	"text":                        "text",
+	"character varying":           "varchar",
+	"varchar":                     "varchar",
+	"character":                   "char",
+	"char":                        "char",
+	"numeric":                     "decimal",
+	"decimal":                     "decimal",
+	"real":                        "float",
+	"float4":                      "float",
+	"double precision":            "double",
+	"float8":                      "double",
+	"timestamp without time zone": "timestamp",
+	"timestamp":                   "timestamp",
+	"timestamp with time zone":    "timestamptz",
+	"timestamptz":                 "timestamptz",
+	"date":                        "date",
+	"time without time zone":      "time",
+	"time":                        "time",
+	"time with time zone":         "timetz",
+	"timetz":                      "timetz",
+	"uuid":                        "uuid",
+	"json":                        "json",
+	"jsonb":                       "jsonb",
+	"bytea":                       "binary",
+}
+
+// MapPostgreSQLTypeToDBML converts a PostgreSQL data type to its DBML equivalent.
+// It handles varchar lengths, numeric precision/scale, and custom types.
+// For types with length/precision modifiers (varchar, char, decimal), include
+// the appropriate NullInt64 values to get properly formatted output.
+func MapPostgreSQLTypeToDBML(dataType, udtName string, charMaxLength, numericPrecision, numericScale sql.NullInt64) string {
+	return mapPostgreSQLTypeToDBML(dataType, udtName, charMaxLength, numericPrecision, numericScale)
+}
+
 func mapPostgreSQLTypeToDBML(dataType, udtName string, charMaxLength, numericPrecision, numericScale sql.NullInt64) string {
 	switch strings.ToLower(dataType) {
 	case "integer", "int4":
@@ -434,27 +585,37 @@ func mapPostgreSQLTypeToDBML(dataType, udtName string, charMaxLength, numericPre
 		return "binary"
 	case "user-defined":
 		// For USER-DEFINED types, use the actual type name but make it DBML-compatible
-		return normalizeCustomType(udtName)
+		return NormalizeCustomType(udtName)
 	case "array":
 		// For arrays, use the base type with array notation
-		return normalizeCustomType(udtName)
+		return NormalizeCustomType(udtName)
 	default:
 		return dataType
 	}
 }
 
-func normalizeCustomType(typeName string) string {
+// NormalizeCustomType converts PostgreSQL custom types (including array types)
+// to DBML-compatible type names. Array types in PostgreSQL start with underscore
+// (e.g., "_int4" for integer[]).
+func NormalizeCustomType(typeName string) string {
 	// Remove common PostgreSQL array suffixes and make type names DBML-compatible
 	if strings.HasPrefix(typeName, "_") {
 		// Array types in PostgreSQL start with underscore
 		baseType := strings.TrimPrefix(typeName, "_")
-		return normalizeTypeName(baseType)
+		return NormalizeTypeName(baseType)
 	}
-	
-	return normalizeTypeName(typeName)
+
+	return NormalizeTypeName(typeName)
 }
 
-func normalizeTypeName(typeName string) string {
+// normalizeCustomType is an alias for backward compatibility.
+func normalizeCustomType(typeName string) string {
+	return NormalizeCustomType(typeName)
+}
+
+// NormalizeTypeName converts a type name to a valid DBML identifier.
+// Unknown types default to "text" for DBML compatibility.
+func NormalizeTypeName(typeName string) string {
 	// Convert custom types to valid DBML identifiers
 	// For unknown types, default to 'text' to ensure DBML compatibility
 	switch strings.ToLower(typeName) {
@@ -465,4 +626,9 @@ func normalizeTypeName(typeName string) string {
 		// For truly unknown types, use text as fallback
 		return "text"
 	}
+}
+
+// normalizeTypeName is an alias for backward compatibility.
+func normalizeTypeName(typeName string) string {
+	return NormalizeTypeName(typeName)
 }

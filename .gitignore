@@ -1,0 +1,24 @@
+# Build output
+/bin/
+/dbml
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Example output
+*.dbml
+example-output.dbml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/

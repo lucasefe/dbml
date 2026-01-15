@@ -138,3 +138,107 @@ func findInString(s, substr string) bool {
 	}
 	return false
 }
+
+func TestFilterTablesExported(t *testing.T) {
+	schema := &Schema{
+		Tables: []Table{
+			{Name: "users", Schema: "public"},
+			{Name: "posts", Schema: "public"},
+			{Name: "migrations", Schema: "public"},
+		},
+	}
+
+	filtered := FilterTables(schema, []string{"migrations"})
+
+	if len(filtered.Tables) != 2 {
+		t.Errorf("Expected 2 tables after filtering, got %d", len(filtered.Tables))
+	}
+}
+
+func TestGenerateDBMLBytes(t *testing.T) {
+	schema := &Schema{
+		Tables: []Table{
+			{
+				Name:   "users",
+				Schema: "public",
+				Columns: []Column{
+					{Name: "id", Type: "int", Nullable: false, IsPrimaryKey: true},
+				},
+				PrimaryKeys: []string{"id"},
+			},
+		},
+	}
+
+	result := GenerateDBMLBytes(schema)
+
+	if len(result) == 0 {
+		t.Error("GenerateDBMLBytes returned empty result")
+	}
+
+	if !containsString(string(result), "Table users {") {
+		t.Error("GenerateDBMLBytes output missing expected content")
+	}
+}
+
+func TestPostgreSQLTypeMapper(t *testing.T) {
+	customMappings := map[string]string{
+		"citext": "varchar",
+		"ltree":  "text",
+	}
+
+	mapper := NewPostgreSQLTypeMapper(customMappings)
+
+	// Test custom mapping
+	result := mapper.MapType("citext", "citext", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{})
+	if result != "varchar" {
+		t.Errorf("Expected 'varchar' for citext, got '%s'", result)
+	}
+
+	// Test fallback to default mapping
+	result = mapper.MapType("integer", "int4", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{})
+	if result != "int" {
+		t.Errorf("Expected 'int' for integer, got '%s'", result)
+	}
+}
+
+func TestMapPostgreSQLTypeToDBMLExported(t *testing.T) {
+	// Test the exported version works the same as the internal one
+	result := MapPostgreSQLTypeToDBML("integer", "int4", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{})
+	if result != "int" {
+		t.Errorf("Expected 'int', got '%s'", result)
+	}
+}
+
+func TestGetQualifiedTableName(t *testing.T) {
+	tests := []struct {
+		tableName  string
+		schemaName string
+		expected   string
+	}{
+		{"users", "public", "users"},
+		{"users", "", "users"},
+		{"users", "auth", "auth.users"},
+	}
+
+	for _, tt := range tests {
+		result := GetQualifiedTableName(tt.tableName, tt.schemaName)
+		if result != tt.expected {
+			t.Errorf("GetQualifiedTableName(%s, %s) = %s, want %s",
+				tt.tableName, tt.schemaName, result, tt.expected)
+		}
+	}
+}
+
+func TestNormalizeCustomType(t *testing.T) {
+	// Array type (underscore prefix)
+	result := NormalizeCustomType("_int4")
+	if result != "text" {
+		t.Errorf("Expected 'text' for array type, got '%s'", result)
+	}
+
+	// Regular custom type
+	result = NormalizeCustomType("address")
+	if result != "text" {
+		t.Errorf("Expected 'text' for custom type, got '%s'", result)
+	}
+}
