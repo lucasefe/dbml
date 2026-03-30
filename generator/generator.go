@@ -11,6 +11,7 @@ package generator
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -232,9 +233,18 @@ func generateEnum(builder *strings.Builder, enum schema.Enum) {
 	}
 	builder.WriteString(fmt.Sprintf("Enum %s {\n", name))
 	for _, value := range enum.Values {
-		builder.WriteString(fmt.Sprintf("  %s\n", value))
+		builder.WriteString(fmt.Sprintf("  %s\n", quoteEnumValue(value)))
 	}
 	builder.WriteString("}\n")
+}
+
+var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+func quoteEnumValue(value string) string {
+	if identifierRe.MatchString(value) {
+		return value
+	}
+	return fmt.Sprintf("'%s'", strings.ReplaceAll(value, "'", "\\'"))
 }
 
 // GetQualifiedTableName returns a table name with schema prefix if not "public".
