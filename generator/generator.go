@@ -11,6 +11,7 @@ package generator
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -36,6 +37,21 @@ func Generate(s *schema.Schema) ([]byte, error) {
 
 	for _, table := range sortedTables {
 		generateTable(&builder, table)
+		builder.WriteString("\n")
+	}
+
+	// Sort and generate enums
+	sortedEnums := make([]schema.Enum, len(s.Enums))
+	copy(sortedEnums, s.Enums)
+	sort.Slice(sortedEnums, func(i, j int) bool {
+		if sortedEnums[i].Schema != sortedEnums[j].Schema {
+			return sortedEnums[i].Schema < sortedEnums[j].Schema
+		}
+		return sortedEnums[i].Name < sortedEnums[j].Name
+	})
+
+	for _, enum := range sortedEnums {
+		generateEnum(&builder, enum)
 		builder.WriteString("\n")
 	}
 
@@ -208,6 +224,27 @@ func generateReference(builder *strings.Builder, ref schema.Reference) {
 	}
 
 	builder.WriteString("\n")
+}
+
+func generateEnum(builder *strings.Builder, enum schema.Enum) {
+	name := enum.Name
+	if enum.Schema != "" && enum.Schema != "public" {
+		name = fmt.Sprintf("%s.%s", enum.Schema, enum.Name)
+	}
+	builder.WriteString(fmt.Sprintf("Enum %s {\n", name))
+	for _, value := range enum.Values {
+		builder.WriteString(fmt.Sprintf("  %s\n", quoteEnumValue(value)))
+	}
+	builder.WriteString("}\n")
+}
+
+var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+func quoteEnumValue(value string) string {
+	if identifierRe.MatchString(value) {
+		return value
+	}
+	return fmt.Sprintf("'%s'", strings.ReplaceAll(value, "'", "\\'"))
 }
 
 // GetQualifiedTableName returns a table name with schema prefix if not "public".

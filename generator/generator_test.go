@@ -189,6 +189,46 @@ func TestGenerateWithDefaultValue(t *testing.T) {
 	}
 }
 
+func TestGenerateWithEnums(t *testing.T) {
+	s := &schema.Schema{
+		Enums: []schema.Enum{
+			{
+				Name:   "status",
+				Schema: "public",
+				Values: []string{"active", "inactive"},
+			},
+			{
+				Name:   "business_type",
+				Schema: "auth",
+				Values: []string{"sole_proprietorship", "non-profit", "limited-liability"},
+			},
+		},
+	}
+
+	result, err := Generate(s)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	dbml := string(result)
+
+	expectedContains := []string{
+		"Enum status {",
+		"  active\n",
+		"  inactive\n",
+		"Enum auth.business_type {",
+		"  sole_proprietorship\n",
+		"  'non-profit'\n",
+		"  'limited-liability'\n",
+	}
+
+	for _, expected := range expectedContains {
+		if !strings.Contains(dbml, expected) {
+			t.Errorf("Generated DBML does not contain expected string: %q\nGot:\n%s", expected, dbml)
+		}
+	}
+}
+
 func TestGenerateWithAutoIncrement(t *testing.T) {
 	defaultVal := "nextval('users_id_seq')"
 	s := &schema.Schema{

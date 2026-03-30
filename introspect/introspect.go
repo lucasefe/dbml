@@ -23,9 +23,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/lib/pq"
 	"github.com/lucasefe/dbml/schema"
-
-	_ "github.com/lib/pq"
 )
 
 // Database introspects a PostgreSQL database and returns its schema.
@@ -126,7 +125,46 @@ func introspectSchemas(db *sql.DB, schemaNames []string, mapper TypeMapper) (*sc
 		}
 	}
 
+	enums, err := getEnums(db, schemaNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get enums: %w", err)
+	}
+	result.Enums = enums
+
 	return result, nil
+}
+
+func getEnums(db *sql.DB, schemaNames []string) ([]schema.Enum, error) {
+	query := `
+		SELECT n.nspname, t.typname,
+		       array_agg(e.enumlabel ORDER BY e.enumsortorder)
+		FROM pg_type t
+		JOIN pg_enum e ON t.oid = e.enumtypid
+		JOIN pg_namespace n ON t.typnamespace = n.oid
+		WHERE t.typtype = 'e'
+		  AND n.nspname = ANY($1)
+		GROUP BY n.nspname, t.typname
+		ORDER BY n.nspname, t.typname
+	`
+
+	rows, err := db.Query(query, pq.Array(schemaNames))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var enums []schema.Enum
+	for rows.Next() {
+		var e schema.Enum
+		var values []string
+		if err := rows.Scan(&e.Schema, &e.Name, pq.Array(&values)); err != nil {
+			return nil, err
+		}
+		e.Values = values
+		enums = append(enums, e)
+	}
+
+	return enums, rows.Err()
 }
 
 func getAllSchemas(db *sql.DB) ([]string, error) {

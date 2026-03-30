@@ -60,7 +60,7 @@ func GenerateFromConnection(db *sql.DB, config *Config) (string, error) {
 	}
 
 	if len(config.ExcludeTables) > 0 {
-		schema = filterTables(schema, config.ExcludeTables)
+		schema = FilterTables(schema, config.ExcludeTables)
 	}
 
 	return GenerateDBML(schema), nil
@@ -84,7 +84,6 @@ func GenerateFromConnectionString(connStr string, config *Config) (string, error
 }
 
 // WriteToFile generates DBML from an existing database connection and writes it to a file.
-// The file is created with mode 0644.
 func WriteToFile(db *sql.DB, filename string, config *Config) error {
 	dbmlContent, err := GenerateFromConnection(db, config)
 	if err != nil {
@@ -95,7 +94,7 @@ func WriteToFile(db *sql.DB, filename string, config *Config) error {
 }
 
 // WriteToFileFromConnectionString generates DBML from a PostgreSQL connection string
-// and writes it to a file. The file is created with mode 0644.
+// and writes it to a file.
 func WriteToFileFromConnectionString(connStr, filename string, config *Config) error {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -110,37 +109,7 @@ func WriteToFileFromConnectionString(connStr, filename string, config *Config) e
 	return WriteToFile(db, filename, config)
 }
 
-// FilterTables removes tables from the schema that match the exclude list.
-// It returns a new Schema with the filtered tables; the original is not modified.
-func FilterTables(schema *Schema, excludeTables []string) *Schema {
-	excludeMap := make(map[string]bool)
-	for _, table := range excludeTables {
-		excludeMap[table] = true
-	}
-
-	filteredTables := make([]Table, 0)
-	for _, table := range schema.Tables {
-		if !excludeMap[table.Name] {
-			filteredTables = append(filteredTables, table)
-		}
-	}
-
-	return &Schema{Tables: filteredTables}
-}
-
-// filterTables is an alias for FilterTables for backward compatibility.
-func filterTables(schema *Schema, excludeTables []string) *Schema {
-	return FilterTables(schema, excludeTables)
-}
-
-// GenerateDBMLBytes converts a Schema into DBML-formatted bytes.
-// This is the preferred method when writing to files or streams.
-func GenerateDBMLBytes(schema *Schema) []byte {
-	return []byte(GenerateDBML(schema))
-}
-
-// GenerateFromConnectionBytes generates DBML from an existing database connection.
-// It returns the generated DBML as bytes, which is more efficient for writing to files.
+// GenerateFromConnectionBytes generates DBML from an existing database connection as bytes.
 func GenerateFromConnectionBytes(db *sql.DB, config *Config) ([]byte, error) {
 	result, err := GenerateFromConnection(db, config)
 	if err != nil {
@@ -149,8 +118,7 @@ func GenerateFromConnectionBytes(db *sql.DB, config *Config) ([]byte, error) {
 	return []byte(result), nil
 }
 
-// GenerateFromConnectionStringBytes generates DBML from a PostgreSQL connection string.
-// It returns the generated DBML as bytes, which is more efficient for writing to files.
+// GenerateFromConnectionStringBytes generates DBML from a PostgreSQL connection string as bytes.
 func GenerateFromConnectionStringBytes(connStr string, config *Config) ([]byte, error) {
 	result, err := GenerateFromConnectionString(connStr, config)
 	if err != nil {
