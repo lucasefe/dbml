@@ -15,5 +15,5 @@ func FilterTables(s *Schema, excludeTables []string) *Schema {
 		}
 	}
 
-	return &Schema{Tables: filteredTables}
+	return &Schema{Tables: filteredTables, Enums: s.Enums}
 }

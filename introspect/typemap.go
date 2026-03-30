@@ -162,12 +162,8 @@ func NormalizeCustomType(typeName string) string {
 }
 
 // NormalizeTypeName converts a type name to a valid DBML identifier.
-// Unknown types default to "text" for DBML compatibility.
+// Custom types (including enums) are returned as-is so they can be
+// referenced by DBML Enum blocks.
 func NormalizeTypeName(typeName string) string {
-	switch strings.ToLower(typeName) {
-	case "address", "contact_method", "offering", "provider", "carrier", "direction", "status", "business_type", "industry", "cta":
-		return "text"
-	default:
-		return "text"
-	}
+	return typeName
 }

@@ -7,6 +7,18 @@ package schema
 type Schema struct {
 	// Tables contains all tables found in the introspected schema(s).
 	Tables []Table
+	// Enums contains all enum types found in the introspected schema(s).
+	Enums []Enum
+}
+
+// Enum represents a PostgreSQL enum type with its allowed values.
+type Enum struct {
+	// Name is the enum type name.
+	Name string
+	// Schema is the database schema containing this enum (e.g., "public").
+	Schema string
+	// Values lists the allowed enum values in their defined order.
+	Values []string
 }
 
 // Table represents a database table with its columns, primary keys,

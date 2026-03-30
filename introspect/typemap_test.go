@@ -35,8 +35,8 @@ func TestMapPostgreSQLTypeToDBML(t *testing.T) {
 		{"json", "json", "json", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "json"},
 		{"jsonb", "jsonb", "jsonb", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "jsonb"},
 		{"bytea", "bytea", "bytea", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "binary"},
-		{"user-defined", "user-defined", "custom_enum", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "text"},
-		{"array type", "array", "_int4", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "text"},
+		{"user-defined", "user-defined", "custom_enum", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "custom_enum"},
+		{"array type", "array", "_int4", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "int4"},
 		{"unknown type", "custom_type", "custom_type", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "custom_type"},
 	}
 
@@ -102,9 +102,9 @@ func TestNormalizeCustomType(t *testing.T) {
 		typeName string
 		expected string
 	}{
-		{"array type with underscore", "_int4", "text"},
-		{"regular custom type", "address", "text"},
-		{"unknown custom type", "some_custom_type", "text"},
+		{"array type with underscore", "_int4", "int4"},
+		{"regular custom type", "address", "address"},
+		{"unknown custom type", "some_custom_type", "some_custom_type"},
 	}
 
 	for _, tt := range tests {
@@ -123,10 +123,10 @@ func TestNormalizeTypeName(t *testing.T) {
 		typeName string
 		expected string
 	}{
-		{"known custom type address", "address", "text"},
-		{"known custom type status", "status", "text"},
-		{"unknown type", "random_type", "text"},
-		{"case insensitive", "ADDRESS", "text"},
+		{"custom type address", "address", "address"},
+		{"custom type status", "status", "status"},
+		{"unknown type", "random_type", "random_type"},
+		{"preserves case", "ADDRESS", "ADDRESS"},
 	}
 
 	for _, tt := range tests {

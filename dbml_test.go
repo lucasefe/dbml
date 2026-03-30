@@ -24,14 +24,14 @@ func TestMapPostgreSQLTypeToDBML(t *testing.T) {
 		{"decimal with precision", "numeric", "numeric", sql.NullInt64{}, sql.NullInt64{Valid: true, Int64: 10}, sql.NullInt64{Valid: true, Int64: 2}, "decimal(10,2)"},
 		{"timestamp", "timestamp without time zone", "timestamp", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "timestamp"},
 		{"uuid", "uuid", "uuid", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "uuid"},
-		{"user-defined address", "user-defined", "address", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "text"},
-		{"array type", "array", "_offering", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "text"},
+		{"user-defined address", "user-defined", "address", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "address"},
+		{"array type", "array", "_offering", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "offering"},
 		{"unknown type", "custom_type", "custom_type", sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, "custom_type"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := mapPostgreSQLTypeToDBML(tt.dataType, tt.udtName, tt.charMaxLength, tt.numericPrecision, tt.numericScale)
+			result := MapPostgreSQLTypeToDBML(tt.dataType, tt.udtName, tt.charMaxLength, tt.numericPrecision, tt.numericScale)
 			if result != tt.expected {
 				t.Errorf("mapPostgreSQLTypeToDBML() = %v, want %v", result, tt.expected)
 			}
@@ -112,7 +112,7 @@ func TestFilterTables(t *testing.T) {
 	}
 
 	excludeTables := []string{"migrations", "schema_migrations"}
-	filtered := filterTables(schema, excludeTables)
+	filtered := FilterTables(schema, excludeTables)
 
 	if len(filtered.Tables) != 2 {
 		t.Errorf("Expected 2 tables after filtering, got %d", len(filtered.Tables))
@@ -230,15 +230,15 @@ func TestGetQualifiedTableName(t *testing.T) {
 }
 
 func TestNormalizeCustomType(t *testing.T) {
-	// Array type (underscore prefix)
+	// Array type (underscore prefix) — returns base type name
 	result := NormalizeCustomType("_int4")
-	if result != "text" {
-		t.Errorf("Expected 'text' for array type, got '%s'", result)
+	if result != "int4" {
+		t.Errorf("Expected 'int4' for array type, got '%s'", result)
 	}
 
-	// Regular custom type
+	// Regular custom type — returns as-is
 	result = NormalizeCustomType("address")
-	if result != "text" {
-		t.Errorf("Expected 'text' for custom type, got '%s'", result)
+	if result != "address" {
+		t.Errorf("Expected 'address' for custom type, got '%s'", result)
 	}
 }

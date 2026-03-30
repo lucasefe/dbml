@@ -39,6 +39,21 @@ func Generate(s *schema.Schema) ([]byte, error) {
 		builder.WriteString("\n")
 	}
 
+	// Sort and generate enums
+	sortedEnums := make([]schema.Enum, len(s.Enums))
+	copy(sortedEnums, s.Enums)
+	sort.Slice(sortedEnums, func(i, j int) bool {
+		if sortedEnums[i].Schema != sortedEnums[j].Schema {
+			return sortedEnums[i].Schema < sortedEnums[j].Schema
+		}
+		return sortedEnums[i].Name < sortedEnums[j].Name
+	})
+
+	for _, enum := range sortedEnums {
+		generateEnum(&builder, enum)
+		builder.WriteString("\n")
+	}
+
 	// Collect and sort all references
 	var allReferences []schema.Reference
 	for _, table := range sortedTables {
@@ -208,6 +223,18 @@ func generateReference(builder *strings.Builder, ref schema.Reference) {
 	}
 
 	builder.WriteString("\n")
+}
+
+func generateEnum(builder *strings.Builder, enum schema.Enum) {
+	name := enum.Name
+	if enum.Schema != "" && enum.Schema != "public" {
+		name = fmt.Sprintf("%s.%s", enum.Schema, enum.Name)
+	}
+	builder.WriteString(fmt.Sprintf("Enum %s {\n", name))
+	for _, value := range enum.Values {
+		builder.WriteString(fmt.Sprintf("  %s\n", value))
+	}
+	builder.WriteString("}\n")
 }
 
 // GetQualifiedTableName returns a table name with schema prefix if not "public".
